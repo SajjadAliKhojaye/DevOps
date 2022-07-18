@@ -20,7 +20,7 @@ pipeline {
           script {
             sh '''
             /kaniko/executor --dockerfile `pwd`/Dockerfile --context `pwd` \
-                             --destination=tashikmoin/nginx-deployment-k8cd:${BUILD_NUMBER}
+                             --destination=sajjadalikhojaye/helloworld:${BUILD_NUMBER}
             '''
             // --context for build context.
 
