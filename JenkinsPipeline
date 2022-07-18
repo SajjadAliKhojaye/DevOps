@@ -20,7 +20,8 @@ pipeline {
           script {
             sh '''
             /kaniko/executor --dockerfile `pwd`/Dockerfile --context `pwd` \
-                             --destination=sajjadalikhojaye/helloworld:${BUILD_NUMBER}
+                             --destination=sajjadalikhojaye/helloworld:${BUILD_NUMBER} \
+                             --cache=true --ignore-path=/busybox --cleanup && mkdir -p /workspace;
             '''
             // --context for build context.
 
