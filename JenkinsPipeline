@@ -1,36 +1,49 @@
-pipeline {    
-    agent any
+pipeline {
 
-    stages {
-        
-        stage ('Checkout') {
-            steps {
-                checkout([$class: 'GitSCM', branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: '53b9a441-f627-48a6-837b-50648c57b2b5', url: 'https://github.com/TashikMoin/CICD-VPS']]])
-            }
-        }
-        
-        stage ('Build and Push to DockerHub') {
-            steps {
-                script {
-                    withCredentials([string(credentialsId: 'tashikmoin', variable: 'DockerHubCredentials')]) {
-                        sh 'sudo docker login -u tashikmoin -p ${DockerHubCredentials}'
-                    }
-                    sh 'sudo docker build -t tashikmoin/cicd-vps .'
-                    sh 'sudo docker push tashikmoin/cicd-vps'
-                }
-            }
-        }
-        
-        stage ('Deploy') {
-            steps {
-                script {
-                    withCredentials([file(credentialsId: 'keyid', variable: 'keyfile')]) {
-                        sh "ssh -tt -i ${keyfile} webserver@20.216.40.112 'cd / && sudo docker pull tashikmoin/cicd-vps && sudo docker stop sampleApp || true && sudo docker rm sampleApp || true && sudo docker run --restart=always -d -p 80:80 --name sampleApp tashikmoin/cicd-vps' " 
-                        
-                    }
-                }
-            }
-        }
-        
+  agent {
+    kubernetes {
+      yamlFile 'pipelineAgent.yaml'   
+    //  It means this pipeline will run in a pod defined in pipelineAgent.yaml file. The pod
+    //  has 2 containers running inside it.
+    //  1. Kaniko container (for building/pushing docker images)
+    //  2. Kubectl container (to run kubectl commands inside our cluster using .kubeconfig credentials)
     }
+  }
+
+  stages {
+
+    stage('Build & Push Images Using Google Kaniko') {
+      steps {
+        // container block to run script/shell commands in specified container of 
+        // the Kubernetes agent <pipelineAgent.yaml> described above.
+        container('kaniko') {
+          script {
+            sh '''
+            /kaniko/executor --dockerfile `pwd`/Dockerfile --context `pwd` \
+                             --destination=tashikmoin/nginx-deployment-k8cd:${BUILD_NUMBER}
+            '''
+            // --context for build context.
+
+            // --dockerfile name of 'Dockerfile'.
+
+            // --destination for pushing images to desired ("any") container registry like 
+            // dockerhub, Azure Container Registry, etc.
+          }
+        }
+      }
+    }
+
+    stage('Deploy App to Kubernetes') {     
+      steps {
+        container('kubectl') {
+          withCredentials([file(credentialsId: 'k8credid', variable: 'KUBECONFIG')]) {
+            sh 'sed -i "s/<TAG>/${BUILD_NUMBER}/" nginx.yaml'
+            sh 'kubectl apply -f nginx.yaml -n default'
+            sh 'kubectl apply -f nginx-service.yaml -n default'
+          }
+        }
+      } 
+    }
+  
+  }
 }
